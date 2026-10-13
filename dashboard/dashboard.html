@@ -48,7 +48,7 @@
     <option value="28" selected>Last 28 days</option>
     <option value="9999">All stored history</option>
   </select>
-  <button id="refreshBtn" title="Re-reads export.json from disk">Refresh</button>
+  <button id="refreshBtn" title="Re-fetches new days from Roblox for the selected game">Refresh</button>
   <div id="meta"></div>
 </header>
 
@@ -349,9 +349,25 @@ async function boot() {
     if (data) render(data, parseInt(rangeSelect.value, 10));
   }
 
+  async function refetch() {
+    const btn = document.getElementById('refreshBtn');
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = 'Fetching...';
+    try {
+      const res = await fetch('/api/refresh/' + gameSelect.value);
+      const data = await res.json();
+      if (res.ok) render(data, parseInt(rangeSelect.value, 10));
+      else showEmpty(data.error || 'refresh failed');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+
   gameSelect.addEventListener('change', refresh);
   rangeSelect.addEventListener('change', refresh);
-  document.getElementById('refreshBtn').addEventListener('click', refresh);
+  document.getElementById('refreshBtn').addEventListener('click', refetch);
 
   await refresh();
 }

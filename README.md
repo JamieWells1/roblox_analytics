@@ -21,12 +21,19 @@ interactive Grafana-style dashboard over it with a universe switcher.
      "game": "Build a Galaxy",
      "universeId": "10600160409",
      "catalogueFile": "../monetisation/catalogue.json",
-     "idsFile": "../monetisation/ids.json"
+     "idsFile": "../monetisation/ids.json",
+     "siblings": ["../escape_a_black_hole"]
    }
    ```
    `catalogueFile`/`idsFile` are optional — only needed if the game runs the
    monetisation sync, so revenue numbers can be read against real prices.
    `envFile` is optional too; defaults to `.env.local`/`.env` at the repo root.
+   `siblings` is how the dashboard finds other games to switch between —
+   relative paths from *this repo's root* to other game repos. Portable
+   across machines because it only assumes the repos keep the same position
+   relative to each other, not any particular absolute folder. List the
+   other game(s) here too (e.g. `escape_a_black_hole`'s config lists
+   `["../build_a_galaxy"]`) so discovery works starting from either one.
 3. Create a one-line shim at `scripts/analytics/export.py`:
    ```python
    #!/usr/bin/env python3
@@ -51,9 +58,15 @@ across machines and over time, and what the dashboard reads.
 python3 vendor/roblox_analytics/dashboard/serve.py
 ```
 
-Auto-discovers every sibling game directory with a `scripts/analytics/config.json`
-and lets you switch between them from the page — no manual wiring beyond step
-1-3 above. Open http://localhost:8800.
+Fetches the latest data for every game it finds (following `siblings`, see
+above) before it starts serving, then lets you switch between them from the
+page — no manual wiring beyond step 1-3 above, and no need to run `export.py`
+separately first. Open http://localhost:8800.
+
+- `--no-fetch` skips the startup fetch and serves whatever's already on disk.
+- The page's own **Refresh** button re-fetches just the game currently selected.
+- `--root <folder>` scans every immediate subfolder of `<folder>` instead of
+  following `siblings`, for anyone who'd rather not edit config.json.
 
 ## What this can and can't show you
 
