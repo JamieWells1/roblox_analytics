@@ -2,11 +2,14 @@
 
 Reusable Roblox Open Cloud analytics export + dashboard, shared across games
 rather than copy-pasted into each one. Used by `build_a_galaxy` and
-`escape_a_black_hole` — either as a git submodule at `vendor/roblox_analytics`
-inside each game, or as a standalone clone sitting next to them (e.g. a
+`escape_a_black_hole` as a **standalone clone sitting next to them** — e.g. a
 `roblox/` folder containing `roblox_analytics`, `build_a_galaxy` and
-`escape_a_black_hole` as three siblings). Both layouts are auto-detected;
-nothing cares what any of the folders are actually named.
+`escape_a_black_hole` as three siblings, cloned once rather than vendored as a
+git submodule in each game. That means updating this module is a plain `git
+pull` in this one repo — no pointer commit needed in every game that uses it.
+(A `vendor/roblox_analytics` submodule also still works if you'd rather pin a
+version per game; both layouts are auto-detected and nothing cares what any
+of the folders are actually named.)
 
 Pulls DAU/MAU, retention, revenue, paying users, CVR, ARPPU, session length
 and playtime for a universe, keeps an ever-growing day-by-day history on disk
@@ -15,9 +18,10 @@ interactive Grafana-style dashboard over it with a universe switcher.
 
 ## Wiring a game up
 
-1. Add this repo as a submodule:
+1. Clone this repo as a sibling of the game repo(s) — not inside any of them:
    ```
-   git submodule add https://github.com/JamieWells1/roblox_analytics.git vendor/roblox_analytics
+   cd ~/Projects/Games   # whatever folder already contains your game repos
+   git clone https://github.com/JamieWells1/roblox_analytics.git
    ```
 2. Create `scripts/analytics/config.json`:
    ```json
@@ -31,10 +35,10 @@ interactive Grafana-style dashboard over it with a universe switcher.
    `catalogueFile`/`idsFile` are optional — only needed if the game runs the
    monetisation sync, so revenue numbers can be read against real prices.
    `envFile` is optional too; defaults to `.env.local`/`.env` at the repo root.
-3. Create a one-line shim at `scripts/analytics/export.py` — copy it from
-   `build_a_galaxy` or `escape_a_black_hole`'s copy verbatim; it finds this
-   module whether it's vendored or standalone, so it never needs editing per
-   game.
+3. Create the shim at `scripts/analytics/export.py` — copy it from
+   `build_a_galaxy` or `escape_a_black_hole`'s copy verbatim; it searches for
+   this module (vendored or standalone) at runtime, so it never needs editing
+   per game.
 4. Run it: `python3 scripts/analytics/export.py`. The Open Cloud key comes
    from `ROBLOX_OPEN_CLOUD_KEY` / `ROBLOX_API_KEY` in the environment or
    `.env.local`, and needs the `universe-analytics:read` scope.
@@ -46,8 +50,8 @@ across machines and over time, and what the dashboard reads.
 ## Running the dashboard
 
 ```
-python3 vendor/roblox_analytics/dashboard/serve.py   # vendored layout
-python3 dashboard/serve.py                            # standalone layout
+python3 dashboard/serve.py                            # standalone layout (recommended)
+python3 vendor/roblox_analytics/dashboard/serve.py    # vendored layout
 ```
 
 Auto-detects the folder containing the game repos (that game's own parent
