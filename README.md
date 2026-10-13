@@ -32,7 +32,7 @@ interactive Grafana-style dashboard over it with a universe switcher.
    #!/usr/bin/env python3
    import pathlib, sys
    HERE = pathlib.Path(__file__).resolve().parent
-   sys.path.insert(0, str(HERE.parents[1] / "vendor"))
+   sys.path.insert(0, str(HERE.parents[1] / "vendor" / "roblox_analytics"))
    from roblox_analytics.export import main
    if __name__ == "__main__":
        raise SystemExit(main(HERE))
