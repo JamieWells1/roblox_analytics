@@ -16,9 +16,6 @@ class GameConfig:
         self.name = data.get("game", config_dir.parent.parent.name)
         self.universe_id = data.get("universeId")
         self.root = (config_dir / "../..").resolve()
-        # Paths to sibling game repos, relative to THIS repo's root (e.g. "../escape_a_black_hole")
-        # — how the dashboard finds other games without assuming a shared parent folder on disk.
-        self.siblings = data.get("siblings", [])
         self.env_file = (config_dir / data["envFile"]).resolve() if data.get("envFile") else None
         self.catalogue_file = (config_dir / data["catalogueFile"]).resolve() if data.get("catalogueFile") else None
         self.ids_file = (config_dir / data["idsFile"]).resolve() if data.get("idsFile") else None

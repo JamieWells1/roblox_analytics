@@ -2,18 +2,17 @@
 """Serve the analytics dashboard, auto-discovering every game that has this
 module wired up.
 
-    python3 vendor/roblox_analytics/dashboard/serve.py
-    python3 vendor/roblox_analytics/dashboard/serve.py --port 8800
-    python3 vendor/roblox_analytics/dashboard/serve.py --no-fetch        # skip the startup fetch
-    python3 vendor/roblox_analytics/dashboard/serve.py --root ~/Games    # scan a folder instead
+    python3 dashboard/serve.py                      # auto-detect the games folder
+    python3 dashboard/serve.py --port 8800
+    python3 dashboard/serve.py --no-fetch            # skip the startup fetch
+    python3 dashboard/serve.py --root ~/Games        # scan a specific folder instead
 
-By default this follows the `siblings` list in the current game's
-`scripts/analytics/config.json` — relative paths from that game's repo root
-to other game repos (e.g. `"../escape_a_black_hole"`), resolved recursively.
-That is portable across machines: it doesn't assume any particular shared
-parent folder, only that the repos sit in the same relative position to each
-other that `siblings` describes. `--root` scans every immediate subfolder of
-an explicit path instead, for anyone who'd rather not edit config.json.
+A "game" is any immediate subdirectory of the games folder containing
+`scripts/analytics/config.json`. The games folder is auto-detected from where
+this module itself lives — a game's `vendor/roblox_analytics` (that game's
+parent folder) if vendored, or this repo's own parent folder if it's a
+standalone checkout sitting next to the games — and doesn't care what any of
+the folders are actually named. `--root` overrides that detection outright.
 
 On launch (unless --no-fetch), every discovered game's `export.py` is run
 once to pull any new days before the server starts, so the dashboard opens
@@ -36,7 +35,8 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = pathlib.Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))  # repo root, so `roblox_analytics` (the package) imports
+REPO_ROOT = HERE.parent  # wherever this clone/submodule is, whatever it's named
+sys.path.insert(0, str(REPO_ROOT))  # so `roblox_analytics` (the package inside it) imports
 
 from roblox_analytics import config as config_mod  # noqa: E402
 from roblox_analytics.export import main as export_main  # noqa: E402
@@ -44,57 +44,43 @@ from roblox_analytics.export import main as export_main  # noqa: E402
 _fetch_locks = {}
 
 
-def this_game_root():
-    """vendor/roblox_analytics/dashboard/serve.py -> the game repo this is vendored into."""
-    return HERE.parents[2]
+def default_games_dir():
+    """Where sibling game repos live, regardless of what anything is named.
+
+    Vendored (REPO_ROOT sits in a folder literally named "vendor" inside a
+    game): that game's own parent folder. Standalone (this repo cloned
+    directly next to the games): this repo's own parent folder.
+    """
+    if REPO_ROOT.parent.name == "vendor":
+        game_root = REPO_ROOT.parent.parent
+        return game_root.parent
+    return REPO_ROOT.parent
 
 
-def game_entry(game_root):
-    config_dir = game_root / "scripts" / "analytics"
+def game_entry(game_dir):
+    config_dir = game_dir / "scripts" / "analytics"
     config_path = config_dir / "config.json"
     if not config_path.exists():
         return None
     cfg = config_mod.GameConfig(config_dir, config_path)
     return {
-        "id": game_root.name,
+        "id": game_dir.name,
         "name": cfg.name,
         "universeId": cfg.universe_id,
-        "root": game_root,
-        "siblings": cfg.siblings,
         "configDir": config_dir,
         "exportPath": config_dir / "export.json",
     }
 
 
-def discover_games(root=None, start=None):
-    """Either scan every immediate subdir of `root`, or follow the relative
-    `siblings` declared starting from `start` (a game repo root) — the
-    default, and the only mode that doesn't assume a shared parent folder."""
-    if root is not None:
-        games = []
-        for game_dir in sorted(root.iterdir()):
-            if game_dir.is_dir():
-                entry = game_entry(game_dir)
-                if entry:
-                    games.append(entry)
-        return games
-
-    seen = {}
-
-    def visit(game_root):
-        game_root = game_root.resolve()
-        if game_root in seen:
-            return
-        entry = game_entry(game_root)
-        if not entry:
-            print(f"  ! {game_root}: no scripts/analytics/config.json, skipped")
-            return
-        seen[game_root] = entry
-        for rel in entry["siblings"]:
-            visit(game_root / rel)
-
-    visit(start)
-    return list(seen.values())
+def discover_games(games_dir):
+    games = []
+    for candidate in sorted(games_dir.iterdir()):
+        if not candidate.is_dir():
+            continue
+        entry = game_entry(candidate)
+        if entry:
+            games.append(entry)
+    return games
 
 
 def fetch_game(game, argv=()):
@@ -179,24 +165,21 @@ def make_handler(games_by_id):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--root", type=pathlib.Path, default=None,
-                        help="scan every immediate subfolder of this path, instead of "
-                             "following the current game's declared siblings")
+                        help="folder to scan for game subfolders (default: auto-detected)")
     parser.add_argument("--port", type=int, default=8800)
     parser.add_argument("--no-fetch", action="store_true",
                         help="skip the startup fetch and serve whatever export.json already has")
     args = parser.parse_args()
 
-    if args.root:
-        games = discover_games(root=args.root)
-    else:
-        games = discover_games(start=this_game_root())
+    games_dir = args.root or default_games_dir()
+    games = discover_games(games_dir)
     if not games:
-        raise SystemExit("no games found — each needs scripts/analytics/config.json "
-                          "(and, to be found without --root, a \"siblings\" entry pointing at it)")
+        raise SystemExit(f"no games found under {games_dir} — each needs "
+                          f"scripts/analytics/config.json (pass --root to point elsewhere)")
 
-    print(f"\nfound {len(games)} game(s):")
+    print(f"\nfound {len(games)} game(s) under {games_dir}:")
     for g in games:
-        print(f"  {g['id']}  (universe {g['universeId']})  {g['root']}")
+        print(f"  {g['id']}  (universe {g['universeId']})")
 
     if not args.no_fetch:
         print("\nfetching latest data before serving (pass --no-fetch to skip this)...")

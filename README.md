@@ -2,7 +2,11 @@
 
 Reusable Roblox Open Cloud analytics export + dashboard, shared across games
 rather than copy-pasted into each one. Used by `build_a_galaxy` and
-`escape_a_black_hole` as a git submodule at `vendor/roblox_analytics`.
+`escape_a_black_hole` — either as a git submodule at `vendor/roblox_analytics`
+inside each game, or as a standalone clone sitting next to them (e.g. a
+`roblox/` folder containing `roblox_analytics`, `build_a_galaxy` and
+`escape_a_black_hole` as three siblings). Both layouts are auto-detected;
+nothing cares what any of the folders are actually named.
 
 Pulls DAU/MAU, retention, revenue, paying users, CVR, ARPPU, session length
 and playtime for a universe, keeps an ever-growing day-by-day history on disk
@@ -21,29 +25,16 @@ interactive Grafana-style dashboard over it with a universe switcher.
      "game": "Build a Galaxy",
      "universeId": "10600160409",
      "catalogueFile": "../monetisation/catalogue.json",
-     "idsFile": "../monetisation/ids.json",
-     "siblings": ["../escape_a_black_hole"]
+     "idsFile": "../monetisation/ids.json"
    }
    ```
    `catalogueFile`/`idsFile` are optional — only needed if the game runs the
    monetisation sync, so revenue numbers can be read against real prices.
    `envFile` is optional too; defaults to `.env.local`/`.env` at the repo root.
-   `siblings` is how the dashboard finds other games to switch between —
-   relative paths from *this repo's root* to other game repos. Portable
-   across machines because it only assumes the repos keep the same position
-   relative to each other, not any particular absolute folder. List the
-   other game(s) here too (e.g. `escape_a_black_hole`'s config lists
-   `["../build_a_galaxy"]`) so discovery works starting from either one.
-3. Create a one-line shim at `scripts/analytics/export.py`:
-   ```python
-   #!/usr/bin/env python3
-   import pathlib, sys
-   HERE = pathlib.Path(__file__).resolve().parent
-   sys.path.insert(0, str(HERE.parents[1] / "vendor" / "roblox_analytics"))
-   from roblox_analytics.export import main
-   if __name__ == "__main__":
-       raise SystemExit(main(HERE))
-   ```
+3. Create a one-line shim at `scripts/analytics/export.py` — copy it from
+   `build_a_galaxy` or `escape_a_black_hole`'s copy verbatim; it finds this
+   module whether it's vendored or standalone, so it never needs editing per
+   game.
 4. Run it: `python3 scripts/analytics/export.py`. The Open Cloud key comes
    from `ROBLOX_OPEN_CLOUD_KEY` / `ROBLOX_API_KEY` in the environment or
    `.env.local`, and needs the `universe-analytics:read` scope.
@@ -55,18 +46,20 @@ across machines and over time, and what the dashboard reads.
 ## Running the dashboard
 
 ```
-python3 vendor/roblox_analytics/dashboard/serve.py
+python3 vendor/roblox_analytics/dashboard/serve.py   # vendored layout
+python3 dashboard/serve.py                            # standalone layout
 ```
 
-Fetches the latest data for every game it finds (following `siblings`, see
-above) before it starts serving, then lets you switch between them from the
-page — no manual wiring beyond step 1-3 above, and no need to run `export.py`
-separately first. Open http://localhost:8800.
+Auto-detects the folder containing the game repos (that game's own parent
+folder if vendored, or this repo's own parent folder if standalone), scans it
+for every immediate subfolder with a `scripts/analytics/config.json`, fetches
+each one's latest data, then serves a page to switch between them — no manual
+wiring beyond step 1-4 above, and no need to run `export.py` separately first.
+Open http://localhost:8800.
 
 - `--no-fetch` skips the startup fetch and serves whatever's already on disk.
 - The page's own **Refresh** button re-fetches just the game currently selected.
-- `--root <folder>` scans every immediate subfolder of `<folder>` instead of
-  following `siblings`, for anyone who'd rather not edit config.json.
+- `--root <folder>` scans that folder instead of the auto-detected one.
 
 ## What this can and can't show you
 
