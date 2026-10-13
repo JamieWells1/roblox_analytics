@@ -94,7 +94,7 @@ def main(config_dir, argv=None):
     print(f"\n{cfg.name}: universe {universe}, key from {key_source}")
     print(f"{args.days}d snapshot at {args.granularity}, {len(metrics)} metrics, breakdowns={args.breakdowns}\n")
 
-    fetched, skipped_cached, skipped_unsupported = 0, 0, 0
+    fetched, skipped_cached, skipped_unsupported, errored = 0, 0, 0, 0
     recheck = False
 
     for metric in metrics:
@@ -131,12 +131,22 @@ def main(config_dir, argv=None):
 
         start_iso = f"{fetch_from}T00:00:00Z"
         result = client.query(metric, universe, api_key, start_iso, now_iso, args.granularity)
+        if "error" in result:
+            errored += 1
+            print(f"  ! {metric}: {str(result.get('detail', result['error']))[:160]}", flush=True)
+            continue
         history_mod.ingest_total(history, metric, result)
+        dim_errors = []
         for dim in dims:
             dim_result = client.query(metric, universe, api_key, start_iso, now_iso, args.granularity, breakdown=dim)
+            if "error" in dim_result:
+                dim_errors.append(dim)
+                continue
             history_mod.ingest_breakdown(history, metric, dim, dim_result)
         fetched += 1
-        print(f"  {metric}: fetched from {fetch_from}{''.join(' +' + d for d in dims)}", flush=True)
+        ok_dims = [d for d in dims if d not in dim_errors]
+        print(f"  {metric}: fetched from {fetch_from}{''.join(' +' + d for d in ok_dims)}"
+              f"{' (breakdown failed: ' + ', '.join(dim_errors) + ')' if dim_errors else ''}", flush=True)
 
     if recheck:
         caps_path.write_text(json.dumps(caps, indent=2) + "\n")
@@ -173,6 +183,6 @@ def main(config_dir, argv=None):
     (config_dir / "export.json").write_text(json.dumps(export, indent=2) + "\n")
 
     print(f"\n{fetched} metric(s) fetched, {skipped_cached} already up to date, "
-          f"{skipped_unsupported} unsupported on this universe")
+          f"{skipped_unsupported} unsupported on this universe, {errored} errored (will retry next run)")
     print(f"wrote {config_dir / 'history.json'} and {config_dir / 'export.json'}")
     return 0
